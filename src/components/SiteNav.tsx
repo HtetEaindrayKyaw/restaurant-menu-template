@@ -408,7 +408,7 @@ export default function SiteNav() {
   return (
     <header
       ref={rootRef}
-      className="relative flex items-center justify-between gap-4 rounded-full border border-white/10 bg-black/20 px-4 py-3 backdrop-blur-sm"
+      className="relative z-50 flex items-center justify-between gap-4 rounded-full border border-white/10 bg-black/20 px-4 py-3 backdrop-blur-sm"
     >
       <a href="/" className="flex items-center gap-3">
         <img
@@ -543,7 +543,7 @@ export default function SiteNav() {
           {profileOpen && user && (
             <div
               ref={profilePanelRef}
-              className="absolute right-0 top-12 z-50 w-[280px] rounded-2xl border border-white/10 bg-[#2b1d1b] p-4 shadow-2xl"
+              className="absolute right-0 top-12 z-[60] w-[280px] rounded-2xl border border-white/10 bg-[#2b1d1b] p-4 shadow-2xl"
             >
               <div className="flex items-center gap-3 border-b border-white/10 pb-3">
                 <div className="grid h-11 w-11 place-items-center rounded-full bg-orange-500/15 text-orange-300">
