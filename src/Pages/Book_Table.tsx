@@ -543,7 +543,11 @@ export default function Book_Table() {
 
             <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:justify-end">
               <a
-                href="/book_table"
+                href="/book-table"
+                onClick={() => {
+                  resetFlow();
+                  setShowLeavePrompt(false);
+                }}
                 className="inline-flex items-center justify-center rounded-full border border-[#ddd] bg-white px-6 py-3 text-sm font-semibold text-[#555] transition hover:bg-[#f4f4f4]"
               >
                 Leave Page

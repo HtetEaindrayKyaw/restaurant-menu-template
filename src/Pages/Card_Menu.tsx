@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, type MouseEvent } from "react";
 import { FaMinus, FaPlus, FaTrash, FaArrowRight } from "react-icons/fa6";
 import SiteNav from "../components/SiteNav";
 import SiteFooter from "../components/SiteFooter";
@@ -42,6 +42,10 @@ const menuItems: MenuItem[] = [
   },
 ];
 
+const MAX_ITEM_QUANTITY = 10;
+const MIN_ORDER_TOTAL = 10;
+const MAX_ORDER_TOTAL = 500;
+
 const getStoredCart = () => {
   const stored = localStorage.getItem("biteMeCart");
   if (!stored) return [] as { id: number; quantity: number }[];
@@ -76,6 +80,9 @@ export default function Cart_Menu() {
     (sum, item) => sum + item.price * item.quantity,
     0
   );
+  const totalQuantity = cartDetails.reduce((sum, item) => sum + item.quantity, 0);
+  const isOrderWithinLimit = total >= MIN_ORDER_TOTAL && total <= MAX_ORDER_TOTAL;
+  const canCheckout = !isCartEmpty && isOrderWithinLimit;
 
   const saveCart = (items: { id: number; quantity: number }[]) => {
     localStorage.setItem("biteMeCart", JSON.stringify(items));
@@ -84,13 +91,45 @@ export default function Cart_Menu() {
 
   const updateQuantity = (id: number, change: number) => {
     setCartItems((current) => {
+      const item = current.find((cartItem) => cartItem.id === id);
+      if (!item) return current;
+
+      const nextQuantity = item.quantity + change;
+      const currentTotal = current.reduce(
+        (sum, cartItem) => sum + menuItems.find((menuItem) => menuItem.id === cartItem.id)!.price * cartItem.quantity,
+        0
+      );
+      const itemPrice = menuItems.find((menuItem) => menuItem.id === id)!.price;
+
+      if (change > 0) {
+        if (item.quantity >= MAX_ITEM_QUANTITY) {
+          setStatusMessage(`You can only order up to ${MAX_ITEM_QUANTITY} of this item at a time.`);
+          return current;
+        }
+
+        if (currentTotal + itemPrice > MAX_ORDER_TOTAL) {
+          setStatusMessage(`Your order cannot exceed $${MAX_ORDER_TOTAL}.`);
+          return current;
+        }
+      }
+
       const next = current
-        .map((item) =>
-          item.id === id
-            ? { id, quantity: Math.max(1, item.quantity + change) }
-            : item
+        .map((cartItem) =>
+          cartItem.id === id
+            ? {
+                id,
+                quantity: change > 0 ? nextQuantity : Math.max(1, nextQuantity),
+              }
+            : cartItem
         )
-        .filter((item) => item.quantity > 0);
+        .filter((cartItem) => cartItem.quantity > 0);
+
+      if (change < 0 && item.quantity === 1) {
+        const removed = next.filter((cartItem) => cartItem.id !== id);
+        saveCart(removed);
+        return removed;
+      }
+
       saveCart(next);
       return next;
     });
@@ -104,7 +143,17 @@ export default function Cart_Menu() {
     });
   };
 
-  const handleCheckout = () => {
+  const handleCheckout = (event?: MouseEvent<HTMLAnchorElement>) => {
+    if (!canCheckout) {
+      event?.preventDefault();
+      setStatusMessage(
+        total < MIN_ORDER_TOTAL
+          ? `Your order must be at least $${MIN_ORDER_TOTAL} to checkout.`
+          : `Your order cannot exceed $${MAX_ORDER_TOTAL}.`
+      );
+      return;
+    }
+
     saveCart(cartItems);
   };
 
@@ -226,7 +275,7 @@ export default function Cart_Menu() {
                 </div>
                 <div className="flex items-center justify-between text-white/70">
                   <span>Total quantity</span>
-                  <span>{cartDetails.reduce((sum, item) => sum + item.quantity, 0)}</span>
+                  <span>{totalQuantity}</span>
                 </div>
                 <div className="flex items-center justify-between text-white/70">
                   <span>Subtotal</span>
@@ -257,11 +306,11 @@ export default function Cart_Menu() {
             href="/checkout"
             onClick={handleCheckout}
             className={`mt-6 inline-flex w-full items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold text-white transition ${
-              isCartEmpty
-                ? "pointer-events-none cursor-not-allowed bg-orange-500/40"
-                : "bg-orange-500 hover:bg-orange-400"
+              canCheckout
+                ? "bg-orange-500 hover:bg-orange-400"
+                : "pointer-events-none cursor-not-allowed bg-orange-500/40"
             }`}
-            aria-disabled={isCartEmpty}
+            aria-disabled={!canCheckout}
           >
             Proceed to Checkout <FaArrowRight />
           </a>

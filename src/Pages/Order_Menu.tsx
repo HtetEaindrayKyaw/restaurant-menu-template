@@ -151,23 +151,11 @@ const categories = [
 ] as const;
 
 const ITEMS_PER_PAGE = 8;
+const MAX_ITEM_QUANTITY = 10;
+const MIN_ORDER_TOTAL = 10;
+const MAX_ORDER_TOTAL = 500;
 
 export default function Order_Menu() {
-  const [search, setSearch] = useState("");
-  const [activeCategory, setActiveCategory] =
-    useState<(typeof categories)[number]>("All");
-  const [currentPage, setCurrentPage] = useState(1);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [addedItemId, setAddedItemId] = useState<number | null>(null);
-
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [search, activeCategory]);
-
-  useEffect(() => {
-    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true");
-  }, []);
-
   const getCartItems = () => {
     const stored = localStorage.getItem("biteMeCart");
     if (!stored) return [] as { id: number; quantity: number }[];
@@ -178,22 +166,81 @@ export default function Order_Menu() {
     }
   };
 
+  const [search, setSearch] = useState("");
+  const [activeCategory, setActiveCategory] =
+    useState<(typeof categories)[number]>("All");
+  const [currentPage, setCurrentPage] = useState(1);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [addedItemId, setAddedItemId] = useState<number | null>(null);
+  const [popupMessage, setPopupMessage] = useState("");
+  const [cartItems, setCartItems] = useState<{ id: number; quantity: number }[]>(
+    () => getCartItems()
+  );
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, activeCategory]);
+
+  useEffect(() => {
+    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true");
+  }, []);
+
+  useEffect(() => {
+    const syncCartItems = () => {
+      setCartItems(getCartItems());
+    };
+
+    syncCartItems();
+    window.addEventListener("cartchange", syncCartItems);
+
+    return () => {
+      window.removeEventListener("cartchange", syncCartItems);
+    };
+  }, []);
+
   const saveCartItems = (items: { id: number; quantity: number }[]) => {
     localStorage.setItem("biteMeCart", JSON.stringify(items));
+    setCartItems(items);
     window.dispatchEvent(new Event("cartchange"));
+  };
+
+  const getItemPrice = (itemId: number) => {
+    const item = menuItems.find((menuItem) => menuItem.id === itemId);
+    return item ? Number(item.price.replace(/[$,]/g, "")) : 0;
   };
 
   const addToCart = (itemId: number) => {
     const cart = getCartItems();
     const existing = cart.find((item) => item.id === itemId);
-    if (existing) {
-      existing.quantity += 1;
-    } else {
-      cart.push({ id: itemId, quantity: 1 });
+    const currentQuantity = existing?.quantity ?? 0;
+    const nextQuantity = currentQuantity + 1;
+    const currentTotal = cart.reduce(
+      (sum, entry) => sum + getItemPrice(entry.id) * entry.quantity,
+      0
+    );
+    const nextTotal = currentTotal + getItemPrice(itemId);
+
+    if (currentQuantity >= MAX_ITEM_QUANTITY) {
+      setPopupMessage(`You can only order up to ${MAX_ITEM_QUANTITY} of this item at a time.`);
+      return;
     }
-    saveCartItems(cart);
+
+    if (nextTotal > MAX_ORDER_TOTAL) {
+      setPopupMessage(`Your order cannot exceed $${MAX_ORDER_TOTAL}.`);
+      return;
+    }
+
+    const nextCart = existing
+      ? cart.map((item) =>
+          item.id === itemId ? { ...item, quantity: nextQuantity } : item
+        )
+      : [...cart, { id: itemId, quantity: 1 }];
+
+    saveCartItems(nextCart);
     setAddedItemId(itemId);
-    window.setTimeout(() => setAddedItemId(null), 2000);
+    window.setTimeout(() => {
+      setAddedItemId(null);
+    }, 2000);
   };
 
   const filteredItems = useMemo(() => {
@@ -220,6 +267,13 @@ export default function Order_Menu() {
     currentPage * ITEMS_PER_PAGE
   );
 
+  const cartQuantityById = useMemo(() => {
+    return cartItems.reduce<Record<number, number>>((acc, item) => {
+      acc[item.id] = item.quantity;
+      return acc;
+    }, {});
+  }, [cartItems]);
+
   const renderStars = (rating: number) => {
     const fullStars = Math.floor(rating);
     const hasHalf = rating - fullStars >= 0.5;
@@ -239,6 +293,30 @@ export default function Order_Menu() {
 
   return (
     <main className="min-h-screen bg-[#2b1d1b] text-white">
+      {popupMessage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-[2rem] border border-orange-400/20 bg-[#2b1d1b] p-6 shadow-2xl shadow-black/30">
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-orange-400">
+              Order limit
+            </p>
+            <h2 className="mt-3 text-xl font-semibold text-white">
+              Maximum quantity reached
+            </h2>
+            <p className="mt-3 text-sm leading-7 text-white/70">
+              {popupMessage}
+            </p>
+            <div className="mt-6 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPopupMessage("")}
+                className="rounded-full bg-orange-500 px-4 py-2 text-sm font-semibold text-white transition hover:bg-orange-400"
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <section className="mx-auto max-w-6xl px-4 pb-8 pt-4 sm:px-6 lg:px-8">
         <SiteNav />
       </section>
@@ -290,71 +368,83 @@ export default function Order_Menu() {
 
       <section className="mx-auto max-w-6xl px-4 pb-8 sm:px-6 lg:px-8">
         <div className="grid gap-6 sm:grid-cols-2 xl:grid-cols-4">
-          {paginatedItems.map((item) => (
-            <article
-              key={item.id}
-              className="overflow-hidden rounded-3xl border border-white/10 bg-white/5"
-            >
-              <img
-                src={item.image}
-                alt={item.name}
-                className="h-52 w-full object-cover"
-              />
+          {paginatedItems.map((item) => {
+            const cartQuantity = cartQuantityById[item.id] ?? 0;
+            const isInCart = cartQuantity > 0;
+            const buttonLabel = !isLoggedIn
+              ? "Login to order"
+              : isInCart
+                ? `In cart • ${cartQuantity}`
+                : addedItemId === item.id
+                  ? "Added"
+                  : "Add to cart";
 
-              <div className="p-5">
-                <div className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
-                      {item.category}
-                    </p>
-                    <h2 className="mt-2 text-lg font-bold text-white">
-                      {item.name}
-                    </h2>
+            return (
+              <article
+                key={item.id}
+                className="flex h-full flex-col overflow-hidden rounded-3xl border border-white/10 bg-white/5"
+              >
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  className="h-52 w-full object-cover"
+                />
+
+                <div className="flex flex-1 flex-col p-5">
+                  <div className="flex items-start justify-between gap-4">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-orange-300">
+                        {item.category}
+                      </p>
+                      <h2 className="mt-2 text-lg font-bold text-white">
+                        {item.name}
+                      </h2>
+                    </div>
+                    <span className="rounded-full bg-orange-500/15 px-3 py-1 text-sm font-semibold text-orange-300">
+                      {item.price}
+                    </span>
                   </div>
-                  <span className="rounded-full bg-orange-500/15 px-3 py-1 text-sm font-semibold text-orange-300">
-                    {item.price}
-                  </span>
+
+                  <p className="mt-3 text-sm leading-6 text-white/70">
+                    {item.description}
+                  </p>
+
+                  <div className="mt-4 flex items-center justify-between">
+                    {renderStars(item.rating)}
+                    <span className="text-xs text-white/55">
+                      {item.rating.toFixed(1)}
+                    </span>
+                  </div>
+
+                  <div className="mt-auto flex flex-col gap-3 pt-5">
+                    <a
+                      href={`/menu-details/${item.id}`}
+                      className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
+                    >
+                      <FaEye />
+                      View details
+                    </a>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!isLoggedIn) {
+                          window.location.href = "/auth?redirect=/cart-menu";
+                          return;
+                        }
+
+                        addToCart(item.id);
+                      }}
+                      className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-400"
+                    >
+                      <FaCartShopping />
+                      {buttonLabel}
+                    </button>
+                  </div>
                 </div>
-
-                <p className="mt-3 text-sm leading-6 text-white/70">
-                  {item.description}
-                </p>
-
-                <div className="mt-4 flex items-center justify-between">
-                  {renderStars(item.rating)}
-                  <span className="text-xs text-white/55">
-                    {item.rating.toFixed(1)}
-                  </span>
-                </div>
-
-                <div className="mt-5 grid gap-3">
-                  <a
-                    href={`/menu-details/${item.id}`}
-                    className="inline-flex items-center justify-center gap-2 rounded-full border border-white/10 bg-white/5 px-4 py-3 text-sm font-semibold text-white transition hover:bg-white/10"
-                  >
-                    <FaEye />
-                    View details
-                  </a>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!isLoggedIn) {
-                        window.location.href = "/auth?redirect=/cart-menu";
-                        return;
-                      }
-
-                      addToCart(item.id);
-                    }}
-                    className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-400"
-                  >
-                    <FaCartShopping />
-                    {isLoggedIn ? (addedItemId === item.id ? "Added" : "Add to cart") : "Login to order"}
-                  </button>
-                </div>
-              </div>
-            </article>
-          ))}
+              </article>
+            );
+          })}
         </div>
 
         {filteredItems.length === 0 && (
