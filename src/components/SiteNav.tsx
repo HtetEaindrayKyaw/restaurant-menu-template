@@ -239,8 +239,10 @@ export default function SiteNav() {
   const syncUser = (nextUser: User | null) => {
     setUser(nextUser);
     if (nextUser) {
+      localStorage.setItem("isLoggedIn", "true");
       localStorage.setItem(USER_KEY, JSON.stringify(nextUser));
     } else {
+      localStorage.removeItem("isLoggedIn");
       localStorage.removeItem(USER_KEY);
     }
     window.dispatchEvent(new Event("authchange"));

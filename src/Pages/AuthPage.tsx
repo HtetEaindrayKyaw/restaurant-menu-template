@@ -2,16 +2,33 @@ import { useState } from "react";
 import SiteNav from "../components/SiteNav";
 import SiteFooter from "../components/SiteFooter";
 
+const USER_KEY = "biteMeUser";
+
 export default function AuthPage() {
   const [mode, setMode] = useState<"login" | "register">("login");
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
+    const form = e.currentTarget as HTMLFormElement;
+    const emailInput = form.elements.namedItem("email") as HTMLInputElement | null;
+    const nameInput = form.elements.namedItem("fullName") as HTMLInputElement | null;
+    const email = emailInput?.value.trim() || "guest@biteme.com";
+    const name =
+      nameInput?.value.trim() || email.split("@")[0] || "Guest User";
+
     localStorage.setItem("isLoggedIn", "true");
+    localStorage.setItem(
+      USER_KEY,
+      JSON.stringify({
+        name,
+        email,
+      })
+    );
+    window.dispatchEvent(new Event("authchange"));
 
     const params = new URLSearchParams(window.location.search);
-    const redirect = params.get("redirect") || "/cart-menu/1";
+    const redirect = params.get("redirect") || "/order-menu";
     window.location.href = redirect;
   };
 
@@ -54,6 +71,7 @@ export default function AuthPage() {
           <form onSubmit={handleSubmit} className="mt-8 space-y-4">
             {mode === "register" && (
               <input
+                name="fullName"
                 type="text"
                 placeholder="Full name"
                 className="w-full rounded-2xl border border-white/10 bg-[#2c1f1c] px-4 py-3 text-white outline-none placeholder:text-white/40"
@@ -61,6 +79,7 @@ export default function AuthPage() {
             )}
 
             <input
+              name="email"
               type="email"
               placeholder="Email address"
               className="w-full rounded-2xl border border-white/10 bg-[#2c1f1c] px-4 py-3 text-white outline-none placeholder:text-white/40"

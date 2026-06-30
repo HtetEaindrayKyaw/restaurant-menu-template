@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FaStar } from "react-icons/fa6";
 import SiteNav from "../components/SiteNav";
 import SiteFooter from "../components/SiteFooter";
@@ -38,6 +38,10 @@ const pairWellWith = [
       "https://images.unsplash.com/photo-1497534446932-c925b458314e?auto=format&fit=crop&w=900&q=80",
   },
 ];
+
+const USER_KEY = "biteMeUser";
+const MAX_ITEM_QUANTITY = 10;
+const MAX_ORDER_TOTAL = 500;
 
 const menuItems: MenuItem[] = [
   {
@@ -80,11 +84,85 @@ function getMenuIdFromUrl() {
   return match ? Number(match[1]) : 1;
 }
 
+function readIsLoggedIn() {
+  if (typeof window === "undefined") return false;
+  if (localStorage.getItem("isLoggedIn") === "true") return true;
+
+  const storedUser = localStorage.getItem(USER_KEY);
+  if (!storedUser) return false;
+
+  try {
+    return Boolean(JSON.parse(storedUser));
+  } catch {
+    return false;
+  }
+}
+
 export default function Menu_details() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
   const selectedItem = useMemo(() => {
     const id = getMenuIdFromUrl();
     return menuItems.find((item) => item.id === id) ?? menuItems[0];
   }, []);
+
+  useEffect(() => {
+    const syncAuthState = () => {
+      setIsLoggedIn(readIsLoggedIn());
+    };
+
+    syncAuthState();
+    window.addEventListener("authchange", syncAuthState);
+    window.addEventListener("storage", syncAuthState);
+
+    return () => {
+      window.removeEventListener("authchange", syncAuthState);
+      window.removeEventListener("storage", syncAuthState);
+    };
+  }, []);
+
+  const handleOrderNow = () => {
+    if (!readIsLoggedIn()) {
+      window.location.href = `/auth?redirect=/menu-details/${selectedItem.id}`;
+      return;
+    }
+
+    const storedCart = localStorage.getItem("biteMeCart");
+    let cartItems: { id: number; quantity: number }[] = [];
+
+    if (storedCart) {
+      try {
+        cartItems = JSON.parse(storedCart) as { id: number; quantity: number }[];
+      } catch {
+        cartItems = [];
+      }
+    }
+
+    const existingItem = cartItems.find((item) => item.id === selectedItem.id);
+    const currentQuantity = existingItem?.quantity ?? 0;
+    const selectedItemPrice = Number(selectedItem.price.replace(/[$,]/g, ""));
+    const currentTotal = cartItems.reduce((sum, item) => {
+      const menuItem = menuItems.find((entry) => entry.id === item.id);
+      const itemPrice = menuItem ? Number(menuItem.price.replace(/[$,]/g, "")) : 0;
+      return sum + itemPrice * item.quantity;
+    }, 0);
+
+    if (currentQuantity >= MAX_ITEM_QUANTITY) return;
+    if (currentTotal + selectedItemPrice > MAX_ORDER_TOTAL) return;
+
+    const nextCart = existingItem
+      ? cartItems.map((item) =>
+          item.id === selectedItem.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        )
+      : [...cartItems, { id: selectedItem.id, quantity: 1 }];
+
+    localStorage.setItem("biteMeCart", JSON.stringify(nextCart));
+    localStorage.setItem("selectedItemId", String(selectedItem.id));
+    window.dispatchEvent(new Event("cartchange"));
+    window.location.href = "/cart-menu";
+  };
 
   return (
     <main className="min-h-screen bg-[#2b1d1b] text-white">
@@ -134,13 +212,13 @@ export default function Menu_details() {
             <span className="rounded-full bg-orange-500/15 px-4 py-2 text-sm font-semibold text-orange-300">
               {selectedItem.price}
             </span>
-            <a
-              href="/auth"
-              onClick={() => localStorage.setItem("selectedItemId", String(selectedItem.id))}
+            <button
+              type="button"
+              onClick={handleOrderNow}
               className="inline-flex items-center gap-2 rounded-full bg-orange-500 px-5 py-3 text-sm font-semibold text-white transition hover:bg-orange-400"
             >
-              Order Now
-            </a>
+              {isLoggedIn ? "Order Now" : "Login to Order"}
+            </button>
           </div>
         </div>
       </section>

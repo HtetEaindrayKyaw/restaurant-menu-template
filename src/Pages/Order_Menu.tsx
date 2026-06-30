@@ -152,8 +152,22 @@ const categories = [
 
 const ITEMS_PER_PAGE = 8;
 const MAX_ITEM_QUANTITY = 10;
-const MIN_ORDER_TOTAL = 10;
 const MAX_ORDER_TOTAL = 500;
+const USER_KEY = "biteMeUser";
+
+const readIsLoggedIn = () => {
+  if (typeof window === "undefined") return false;
+  if (localStorage.getItem("isLoggedIn") === "true") return true;
+
+  const storedUser = localStorage.getItem(USER_KEY);
+  if (!storedUser) return false;
+
+  try {
+    return Boolean(JSON.parse(storedUser));
+  } catch {
+    return false;
+  }
+};
 
 export default function Order_Menu() {
   const getCartItems = () => {
@@ -182,7 +196,18 @@ export default function Order_Menu() {
   }, [search, activeCategory]);
 
   useEffect(() => {
-    setIsLoggedIn(localStorage.getItem("isLoggedIn") === "true");
+    const syncAuthState = () => {
+      setIsLoggedIn(readIsLoggedIn());
+    };
+
+    syncAuthState();
+    window.addEventListener("authchange", syncAuthState);
+    window.addEventListener("storage", syncAuthState);
+
+    return () => {
+      window.removeEventListener("authchange", syncAuthState);
+      window.removeEventListener("storage", syncAuthState);
+    };
   }, []);
 
   useEffect(() => {
@@ -210,6 +235,11 @@ export default function Order_Menu() {
   };
 
   const addToCart = (itemId: number) => {
+    if (!readIsLoggedIn()) {
+      window.location.href = "/auth?redirect=/order-menu";
+      return;
+    }
+
     const cart = getCartItems();
     const existing = cart.find((item) => item.id === itemId);
     const currentQuantity = existing?.quantity ?? 0;
@@ -241,6 +271,7 @@ export default function Order_Menu() {
     window.setTimeout(() => {
       setAddedItemId(null);
     }, 2000);
+    window.location.href = "/cart-menu";
   };
 
   const filteredItems = useMemo(() => {
@@ -427,15 +458,12 @@ export default function Order_Menu() {
 
                     <button
                       type="button"
-                      onClick={() => {
-                        if (!isLoggedIn) {
-                          window.location.href = "/auth?redirect=/cart-menu";
-                          return;
-                        }
-
-                        addToCart(item.id);
-                      }}
-                      className="inline-flex items-center justify-center gap-2 rounded-full bg-orange-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-orange-400"
+                      onClick={() => addToCart(item.id)}
+                      className={`inline-flex items-center justify-center gap-2 rounded-full px-4 py-3 text-sm font-semibold text-white transition ${
+                        isLoggedIn
+                          ? "bg-orange-500 hover:bg-orange-400"
+                          : "bg-orange-500 hover:bg-orange-400"
+                      }`}
                     >
                       <FaCartShopping />
                       {buttonLabel}
